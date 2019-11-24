@@ -1,0 +1,25 @@
+name: OreFinder
+version: ${project.version}
+main: me.cubixor.orefinder.Orefinder
+depend: [ProtocolLib]
+description: Find ores easier using new Ore-Finder item!
+author: Cubixor
+commands:
+  orefinder:
+    description: Main plugin command
+    usage: /orefinder
+    aliases: of
+permissions:
+  orefinder.command:
+    description: Allows using orefinder command
+    default: op
+  orefinder.use:
+    description: Allows using Ore-Finder
+    default: true
+  orefinder.*:
+    description: Allows using all plugin features
+    default: op
+    children:
+      - orefinder.command
+      - orefinder.use
+
