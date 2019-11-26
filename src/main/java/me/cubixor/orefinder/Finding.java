@@ -16,6 +16,8 @@ import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerJoinEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.potion.PotionEffect;
+import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
@@ -99,6 +101,8 @@ class Finding implements Listener {
                         shulker.setAI(false);
                         shulker.setInvulnerable(true);
                         shulker.setGlowing(true);
+                        PotionEffect invisibility = new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 255, false, false);
+                        shulker.addPotionEffect(invisibility);
                         shulkers.put(shulker, evt.getPlayer().getUniqueId().toString());
                         ores.put(shulker, evt.getPlayer().getWorld().getBlockAt(loc));
                         found = true;
@@ -144,16 +148,14 @@ class Finding implements Listener {
             public void run() {
                 if (!cooldown.containsKey(player)) {
                     this.cancel();
-                    return;
+                } else {
+                    if (cooldown.get(player) != 0) {
+                        cooldown.replace(player, cooldown.get(player) - 1);
+                    } else {
+                        removeShulker(player);
+                        this.cancel();
+                    }
                 }
-
-                if (cooldown.get(player) != 0) {
-                    cooldown.replace(player, cooldown.get(player) - 1);
-                    return;
-                }
-
-                removeShulker(player);
-                this.cancel();
             }
         }.runTaskTimer(plugin, 0, 20);
     }
@@ -164,10 +166,13 @@ class Finding implements Listener {
             return;
         }
 
+        HashMap<Shulker, Block> oresToRemove = new HashMap<>();
         for (Shulker shulker : ores.keySet()) {
+
             if (evt.getBlock().getLocation().equals(ores.get(shulker).getLocation())) {
+
                 shulkers.remove(shulker);
-                ores.remove(shulker);
+                oresToRemove.put(shulker, ores.get(shulker));
 
                 if (evt.getBlock().getType().equals(Material.COAL_ORE)) {
                     plugin.coalOre.removeEntry(shulker.getUniqueId().toString());
@@ -202,6 +207,9 @@ class Finding implements Listener {
                 break;
             }
         }
+        for (Shulker shulker : oresToRemove.keySet()) {
+            ores.remove(shulker);
+        }
     }
 
     @EventHandler
@@ -223,6 +231,8 @@ class Finding implements Listener {
     private void removeShulker(String player) {
         UUID playerUUID = UUID.fromString(player);
         World world = Bukkit.getPlayer(playerUUID).getWorld();
+
+        HashMap<Shulker, String> shulkersToRemove = new HashMap<>();
         for (Shulker shulker : shulkers.keySet()) {
             if (shulkers.get(shulker).equals(player)) {
                 if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.COAL_ORE)) {
@@ -242,9 +252,13 @@ class Finding implements Listener {
                 } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.NETHER_QUARTZ_ORE)) {
                     plugin.quartzOre.removeEntry(shulker.getUniqueId().toString());
                 }
-
+                shulkersToRemove.put(shulker, shulkers.get(shulker));
+                ores.remove(shulker);
                 shulker.remove();
             }
+        }
+        for (Shulker shulker : shulkersToRemove.keySet()) {
+            shulkers.remove(shulker);
         }
         cooldown.remove(player);
     }

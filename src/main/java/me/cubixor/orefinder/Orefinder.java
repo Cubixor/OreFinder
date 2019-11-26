@@ -69,11 +69,11 @@ public final class Orefinder extends JavaPlugin {
         }
         try {
             goldOre = board.registerNewTeam("goldOre");
-            goldOre.setColor(ChatColor.YELLOW);
+            goldOre.setColor(ChatColor.GOLD);
         } catch (IllegalArgumentException ex) {
             board.getTeam("goldOre").unregister();
             goldOre = board.registerNewTeam("goldOre");
-            goldOre.setColor(ChatColor.YELLOW);
+            goldOre.setColor(ChatColor.GOLD);
         }
         try {
             redstoneOre = board.registerNewTeam("redstoneOre");

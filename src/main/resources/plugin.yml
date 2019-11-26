@@ -1,5 +1,6 @@
 name: OreFinder
 version: ${project.version}
+api-version: 1.13
 main: me.cubixor.orefinder.Orefinder
 depend: [ProtocolLib]
 description: Find ores easier using new Ore-Finder item!
