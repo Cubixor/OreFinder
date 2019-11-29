@@ -5,6 +5,3 @@ radius: 16
 
 # Amount of time for which ores will be visible after using Ore-Finder (seconds)
 cooldown: 10
-
-# Should Ore-Finder crafting be enabled? (true/false)
-enable-crafting: true

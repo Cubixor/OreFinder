@@ -80,6 +80,7 @@ public class Command implements CommandExecutor {
                 return true;
             }
 
+
             ItemStack hook = target.getInventory().getItemInMainHand();
             ItemMeta hookMeta = hook.getItemMeta();
             List<String> hookLore;

@@ -42,7 +42,6 @@ public final class Orefinder extends JavaPlugin {
 
         getCommand("orefinder").setExecutor(new Command(this));
         getServer().getPluginManager().registerEvents(new Finding(this), this);
-        getServer().getPluginManager().registerEvents(new Crafting(this), this);
         getConfig().options().copyDefaults();
         saveDefaultConfig();
         saveResource("messages.yml", false);
