@@ -32,12 +32,7 @@ import java.util.List;
 
 class Finding implements Listener {
 
-    private Orefinder plugin;
-    private HashMap<String, Integer> cooldown = new HashMap<>();
-    private HashMap<Shulker, String> shulkers = new HashMap<>();
-    private HashMap<Shulker, Block> blocks = new HashMap<>();
-    private List<String> sneaking = new ArrayList<>();
-    private HashMap<String, List<Material>> materialOres = new HashMap<>();
+    public Orefinder plugin;
 
     Finding(Orefinder of) {
         plugin = of;
@@ -59,15 +54,16 @@ class Finding implements Listener {
             return;
         }
 
-        if (sneaking.contains(evt.getPlayer().getUniqueId().toString())) {
+        if (plugin.sneaking.contains(evt.getPlayer().getUniqueId().toString())) {
             removeShulker(evt.getPlayer().getUniqueId().toString());
-            sneaking.remove(evt.getPlayer().getUniqueId().toString());
+            plugin.sneaking.remove(evt.getPlayer().getUniqueId().toString());
             evt.getPlayer().sendMessage(plugin.getMessage("prefix") + plugin.getMessage("disable"));
             return;
         }
 
-        if (cooldown.containsKey(evt.getPlayer().getUniqueId().toString())) {
-            cooldown.remove(evt.getPlayer().getUniqueId().toString());
+        if (plugin.cooldown.containsKey(evt.getPlayer().getUniqueId().toString())) {
+            plugin.cooldown.remove(evt.getPlayer().getUniqueId().toString());
+            plugin.radius.remove(evt.getPlayer().getUniqueId().toString());
             return;
         }
 
@@ -104,35 +100,44 @@ class Finding implements Listener {
         if (hookLore.contains(plugin.getMessage("item-lore-quartz"))) {
             materials.add(Material.NETHER_QUARTZ_ORE);
         }
-        materialOres.put(evt.getPlayer().getUniqueId().toString(), materials);
+        plugin.materialOres.put(evt.getPlayer().getUniqueId().toString(), materials);
+        plugin.radius.put(evt.getPlayer().getUniqueId().toString(), plugin.getConfig().getInt("radius"));
+        plugin.chunk.put(evt.getPlayer().getUniqueId().toString(), evt.getPlayer().getLocation().getChunk());
+
 
 
         if (evt.getPlayer().isSneaking()) {
-            sneaking.add(evt.getPlayer().getUniqueId().toString());
+            plugin.sneaking.add(evt.getPlayer().getUniqueId().toString());
             evt.getPlayer().sendMessage(plugin.getMessage("prefix") + plugin.getMessage("enable"));
         } else {
-            cooldown.put(evt.getPlayer().getUniqueId().toString(), plugin.getConfig().getInt("cooldown"));
+            plugin.cooldown.put(evt.getPlayer().getUniqueId().toString(), plugin.getConfig().getInt("cooldown"));
             disappear(evt.getPlayer());
-            evt.getPlayer().sendMessage(plugin.getMessage("prefix") + plugin.getMessage("enable-cooldown").replace("%time%", cooldown.get(evt.getPlayer().getUniqueId().toString()).toString()));
+            evt.getPlayer().sendMessage(plugin.getMessage("prefix") + plugin.getMessage("enable-cooldown").replace("%time%", plugin.cooldown.get(evt.getPlayer().getUniqueId().toString()).toString()));
         }
 
     }
 
     @EventHandler
     public void onMove(PlayerMoveEvent evt) {
-        if (!cooldown.containsKey(evt.getPlayer().getUniqueId().toString()) && !sneaking.contains(evt.getPlayer().getUniqueId().toString())) {
+        if (!plugin.cooldown.containsKey(evt.getPlayer().getUniqueId().toString()) && !plugin.sneaking.contains(evt.getPlayer().getUniqueId().toString())) {
             return;
         }
 
-        int raduis = plugin.getConfig().getInt("radius");
+        if (plugin.chunk.get(evt.getPlayer().getUniqueId().toString()).equals(evt.getPlayer().getLocation().getChunk())) {
+            return;
+        }
+
+        plugin.chunk.replace(evt.getPlayer().getUniqueId().toString(), evt.getPlayer().getLocation().getChunk());
+
+        int raduis = (16 * plugin.radius.get(evt.getPlayer().getUniqueId().toString()));
         Block middle = evt.getPlayer().getLocation().getBlock();
         List<Block> nearbyBlocks = new ArrayList<>();
         for (int x = raduis; x >= -raduis; x--) {
             for (int y = raduis; y >= -raduis; y--) {
                 for (int z = raduis; z >= -raduis; z--) {
-                    if (materialOres.get(evt.getPlayer().getUniqueId().toString()).contains(middle.getRelative(x, y, z).getType())) {
+                    if (plugin.materialOres.get(evt.getPlayer().getUniqueId().toString()).contains(middle.getRelative(x, y, z).getType())) {
                         nearbyBlocks.add(middle.getRelative(x, y, z));
-                        if (!blocks.containsValue(middle.getRelative(x, y, z))) {
+                        if (!plugin.blocks.containsValue(middle.getRelative(x, y, z))) {
                             Location loc = middle.getRelative(x, y, z).getLocation();
                             Shulker shulker = (Shulker) evt.getPlayer().getWorld().spawnEntity(loc, EntityType.SHULKER);
                             shulker.setAI(false);
@@ -140,8 +145,8 @@ class Finding implements Listener {
                             shulker.setGlowing(true);
                             PotionEffect invisibility = new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 255, false, false);
                             shulker.addPotionEffect(invisibility);
-                            shulkers.put(shulker, evt.getPlayer().getUniqueId().toString());
-                            blocks.put(shulker, evt.getPlayer().getWorld().getBlockAt(loc));
+                            plugin.shulkers.put(shulker, evt.getPlayer().getUniqueId().toString());
+                            plugin.blocks.put(shulker, evt.getPlayer().getWorld().getBlockAt(loc));
 
                             for (Player p : Bukkit.getOnlinePlayers()) {
                                 if (!p.equals(evt.getPlayer())) {
@@ -174,8 +179,8 @@ class Finding implements Listener {
             }
         }
         List<Shulker> toRemove = new ArrayList<>();
-        for (Shulker shulker : blocks.keySet()) {
-            if (!nearbyBlocks.contains(blocks.get(shulker))) {
+        for (Shulker shulker : plugin.blocks.keySet()) {
+            if (!nearbyBlocks.contains(plugin.blocks.get(shulker))) {
                 World world = evt.getPlayer().getWorld();
 
                 if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.COAL_ORE)) {
@@ -195,33 +200,37 @@ class Finding implements Listener {
                 } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.NETHER_QUARTZ_ORE)) {
                     plugin.quartzOre.removeEntry(shulker.getUniqueId().toString());
                 }
-                shulkers.remove(shulker);
+                plugin.shulkers.remove(shulker);
                 toRemove.add(shulker);
                 shulker.remove();
             }
         }
         for (Shulker shulker : toRemove) {
-            blocks.remove(shulker);
+            plugin.blocks.remove(shulker);
         }
     }
 
 
-    private void disappear(Player player) {
+    public void disappear(Player player) {
         new BukkitRunnable() {
             @Override
             public void run() {
-                if (!cooldown.containsKey(player.getUniqueId().toString())) {
+                if (!plugin.cooldown.containsKey(player.getUniqueId().toString())) {
                     removeShulker(player.getUniqueId().toString());
-                    materialOres.remove(player.getUniqueId().toString());
+                    plugin.materialOres.remove(player.getUniqueId().toString());
+                    plugin.radius.remove(player.getUniqueId().toString());
+                    plugin.chunk.remove(player.getUniqueId().toString());
                     this.cancel();
                 } else {
-                    if (cooldown.get(player.getUniqueId().toString()) != 0) {
-                        int time = cooldown.replace(player.getUniqueId().toString(), cooldown.get(player.getUniqueId().toString()) - 1);
+                    if (plugin.cooldown.get(player.getUniqueId().toString()) != 0) {
+                        int time = plugin.cooldown.replace(player.getUniqueId().toString(), plugin.cooldown.get(player.getUniqueId().toString()) - 1);
                         player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(plugin.getMessage("cooldown-format").replace("%time%", Integer.toString(time))));
                     } else {
                         removeShulker(player.getUniqueId().toString());
-                        cooldown.remove(player.getUniqueId().toString());
-                        materialOres.remove(player.getUniqueId().toString());
+                        plugin.cooldown.remove(player.getUniqueId().toString());
+                        plugin.materialOres.remove(player.getUniqueId().toString());
+                        plugin.radius.remove(player.getUniqueId().toString());
+                        plugin.chunk.remove(player.getUniqueId().toString());
                         player.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("disable"));
                         player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(""));
                         this.cancel();
@@ -233,17 +242,17 @@ class Finding implements Listener {
 
     @EventHandler
     public void oreBreak(BlockBreakEvent evt) {
-        if (!cooldown.containsKey(evt.getPlayer().getUniqueId().toString()) && !sneaking.contains(evt.getPlayer().getUniqueId().toString())) {
+        if (!plugin.cooldown.containsKey(evt.getPlayer().getUniqueId().toString()) && !plugin.sneaking.contains(evt.getPlayer().getUniqueId().toString())) {
             return;
         }
 
         HashMap<Shulker, Block> oresToRemove = new HashMap<>();
-        for (Shulker shulker : blocks.keySet()) {
+        for (Shulker shulker : plugin.blocks.keySet()) {
 
-            if (evt.getBlock().getLocation().equals(blocks.get(shulker).getLocation())) {
+            if (evt.getBlock().getLocation().equals(plugin.blocks.get(shulker).getLocation())) {
 
-                shulkers.remove(shulker);
-                oresToRemove.put(shulker, blocks.get(shulker));
+                plugin.shulkers.remove(shulker);
+                oresToRemove.put(shulker, plugin.blocks.get(shulker));
 
                 if (evt.getBlock().getType().equals(Material.COAL_ORE)) {
                     plugin.coalOre.removeEntry(shulker.getUniqueId().toString());
@@ -266,35 +275,41 @@ class Finding implements Listener {
                 shulker.remove();
 
                 boolean otherOres = false;
-                for (Shulker s : shulkers.keySet()) {
-                    if (shulkers.get(s).equals(evt.getPlayer().getUniqueId().toString())) {
+                for (Shulker s : plugin.shulkers.keySet()) {
+                    if (plugin.shulkers.get(s).equals(evt.getPlayer().getUniqueId().toString())) {
                         otherOres = true;
                         break;
                     }
                 }
                 if (!otherOres) {
-                    cooldown.remove(evt.getPlayer().getUniqueId().toString());
+                    plugin.cooldown.remove(evt.getPlayer().getUniqueId().toString());
                 }
                 break;
             }
         }
         for (Shulker shulker : oresToRemove.keySet()) {
-            blocks.remove(shulker);
+            plugin.blocks.remove(shulker);
         }
     }
 
     @EventHandler
     public void onLeave(PlayerQuitEvent evt) {
-        if (!cooldown.containsKey(evt.getPlayer().getUniqueId().toString())) {
+        if (!plugin.cooldown.containsKey(evt.getPlayer().getUniqueId().toString()) && !plugin.sneaking.contains(evt.getPlayer().getUniqueId().toString())) {
             return;
         }
-        cooldown.remove(evt.getPlayer().getUniqueId().toString());
-        materialOres.remove(evt.getPlayer().getUniqueId().toString());
+        plugin.cooldown.remove(evt.getPlayer().getUniqueId().toString());
+        if (plugin.sneaking.contains(evt.getPlayer().getUniqueId().toString())) {
+            plugin.sneaking.remove(evt.getPlayer().getUniqueId().toString());
+            (new Finding(plugin)).removeShulker(evt.getPlayer().getUniqueId().toString());
+        }
+        plugin.materialOres.remove(evt.getPlayer().getUniqueId().toString());
+        plugin.radius.remove(evt.getPlayer().getUniqueId().toString());
+        plugin.chunk.remove(evt.getPlayer().getUniqueId().toString());
     }
 
     @EventHandler
     public void onJoin(PlayerJoinEvent evt) {
-        for (Shulker s : shulkers.keySet()) {
+        for (Shulker s : plugin.shulkers.keySet()) {
             plugin.entityHider.toggleEntity(evt.getPlayer(), s);
         }
     }
@@ -306,17 +321,17 @@ class Finding implements Listener {
         }
     }
 
-    private void removeShulker(String player) {
+    public void removeShulker(String player) {
         World world = null;
-        for (Shulker shulker : shulkers.keySet()) {
-            if (shulkers.get(shulker).equals(player)) {
+        for (Shulker shulker : plugin.shulkers.keySet()) {
+            if (plugin.shulkers.get(shulker).equals(player)) {
                 world = shulker.getWorld();
             }
         }
 
         List<Shulker> toRemove = new ArrayList<>();
-        for (Shulker shulker : shulkers.keySet()) {
-            if (shulkers.get(shulker).equals(player)) {
+        for (Shulker shulker : plugin.shulkers.keySet()) {
+            if (plugin.shulkers.get(shulker).equals(player)) {
                 if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.COAL_ORE)) {
                     plugin.diamondOre.removeEntry(shulker.getUniqueId().toString());
                 } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.IRON_ORE)) {
@@ -335,12 +350,12 @@ class Finding implements Listener {
                     plugin.quartzOre.removeEntry(shulker.getUniqueId().toString());
                 }
                 toRemove.add(shulker);
-                blocks.remove(shulker);
+                plugin.blocks.remove(shulker);
                 shulker.remove();
             }
         }
         for (Shulker shulker : toRemove) {
-            shulkers.remove(shulker);
+            plugin.shulkers.remove(shulker);
         }
     }
 }

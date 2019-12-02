@@ -2,13 +2,12 @@ package me.cubixor.orefinder;
 
 import com.comphenix.protocol.ProtocolLibrary;
 import com.comphenix.protocol.ProtocolManager;
-import org.bukkit.Bukkit;
-import org.bukkit.ChatColor;
-import org.bukkit.Material;
-import org.bukkit.NamespacedKey;
+import org.bukkit.*;
+import org.bukkit.block.Block;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.enchantments.Enchantment;
+import org.bukkit.entity.Shulker;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.ShapedRecipe;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -17,12 +16,16 @@ import org.bukkit.scoreboard.Scoreboard;
 import org.bukkit.scoreboard.Team;
 
 import java.io.File;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.List;
 
 
 public final class Orefinder extends JavaPlugin {
 
     FileConfiguration messagesConfig;
     EntityHider entityHider;
+
     Team coalOre;
     Team ironOre;
     Team goldOre;
@@ -31,9 +34,19 @@ public final class Orefinder extends JavaPlugin {
     Team diamondOre;
     Team emeraldOre;
     Team quartzOre;
+
     private Scoreboard board;
     private File messages = new File(getDataFolder(), "messages.yml");
     private ProtocolManager protocolManager;
+
+    public HashMap<String, Integer> cooldown = new HashMap<>();
+    public HashMap<Shulker, String> shulkers = new HashMap<>();
+    public HashMap<Shulker, Block> blocks = new HashMap<>();
+    public List<String> sneaking = new ArrayList<>();
+    public HashMap<String, List<Material>> materialOres = new HashMap<>();
+    public HashMap<String, Integer> radius = new HashMap<>();
+    public HashMap<String, Chunk> chunk = new HashMap<>();
+
 
     @Override
     public void onEnable() {
