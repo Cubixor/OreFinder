@@ -2,17 +2,12 @@ package me.cubixor.orefinder;
 
 import net.md_5.bungee.api.ChatMessageType;
 import net.md_5.bungee.api.chat.TextComponent;
-import org.bukkit.Bukkit;
-import org.bukkit.Location;
-import org.bukkit.Material;
-import org.bukkit.World;
-import org.bukkit.block.Block;
+import org.bukkit.*;
 import org.bukkit.entity.EntityType;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Shulker;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.Listener;
-import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
@@ -26,213 +21,207 @@ import org.bukkit.potion.PotionEffectType;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.ArrayList;
-import java.util.HashMap;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 
 
-class Finding implements Listener {
+public class Finding implements Listener {
 
-    public Orefinder plugin;
+    private final OreFinder plugin;
 
-    Finding(Orefinder of) {
-        plugin = of;
+    public Finding() {
+        this.plugin = OreFinder.getInstance();
     }
 
     @EventHandler
-    void findOres(PlayerInteractEvent evt) {
-        if (!(evt.getPlayer().getInventory().getItemInMainHand().getType().equals(Material.TRIPWIRE_HOOK) && evt.getPlayer().getInventory().getItemInMainHand().getItemMeta().getDisplayName().equals(plugin.getMessage("item-name")))) {
+    public void findOres(PlayerInteractEvent evt) {
+        if (evt.getHand() == null || !evt.getHand().equals(EquipmentSlot.HAND)) {
             return;
         }
-        if (!(evt.getAction().equals(Action.RIGHT_CLICK_BLOCK) || evt.getAction().equals(Action.RIGHT_CLICK_AIR))) {
+
+        ItemStack findingItem = plugin.hasFindingItem(evt.getPlayer(), true);
+
+        if (findingItem == null) {
             return;
         }
-        if (!evt.getHand().equals(EquipmentSlot.HAND)) {
-            return;
-        }
+
         if (!evt.getPlayer().hasPermission("orefinder.use")) {
-            evt.getPlayer().sendMessage(plugin.getMessage("prefix") + plugin.getMessage("no-permission"));
+            evt.getPlayer().sendMessage(plugin.getMessage("no-permission"));
             return;
         }
 
-        if (plugin.sneaking.contains(evt.getPlayer().getUniqueId().toString())) {
-            removeShulker(evt.getPlayer().getUniqueId().toString());
-            plugin.sneaking.remove(evt.getPlayer().getUniqueId().toString());
-            evt.getPlayer().sendMessage(plugin.getMessage("prefix") + plugin.getMessage("disable"));
+        Player player = evt.getPlayer();
+
+        if (plugin.getPlayerData().containsKey(player)) {
+            removeShulker(player);
+            plugin.getPlayerData().remove(player);
+            evt.getPlayer().sendMessage(plugin.getMessage("disable"));
             return;
         }
 
-        if (plugin.cooldown.containsKey(evt.getPlayer().getUniqueId().toString())) {
-            plugin.cooldown.remove(evt.getPlayer().getUniqueId().toString());
-            plugin.radius.remove(evt.getPlayer().getUniqueId().toString());
+
+        if (findingItem.getItemMeta().getLore() == null) {
+            evt.getPlayer().sendMessage(plugin.getMessage("no-ores"));
             return;
         }
 
-        ItemStack hook = evt.getPlayer().getInventory().getItemInMainHand();
-        ArrayList<String> hookLore;
-        if (hook.getItemMeta().getLore() != null) {
-            hookLore = new ArrayList<>(hook.getItemMeta().getLore());
-        } else {
-            hookLore = new ArrayList<>();
-        }
+        List<String> lore = findingItem.getItemMeta().getLore() != null ? new ArrayList<>(findingItem.getItemMeta().getLore()) : new ArrayList<>();
 
-        List<Material> materials = new ArrayList<>();
-        if (hookLore.contains(plugin.getMessage("item-lore-coal"))) {
-            materials.add(Material.COAL_ORE);
+        List<Block> materials = new ArrayList<>();
+        for (Block block : plugin.getBlocksToFind().values()) {
+            if (lore.contains(block.getName())) {
+                materials.add(block);
+            }
         }
-        if (hookLore.contains(plugin.getMessage("item-lore-iron"))) {
-            materials.add(Material.IRON_ORE);
-        }
-        if (hookLore.contains(plugin.getMessage("item-lore-gold"))) {
-            materials.add(Material.GOLD_ORE);
-        }
-        if (hookLore.contains(plugin.getMessage("item-lore-redstone"))) {
-            materials.add(Material.REDSTONE_ORE);
-        }
-        if (hookLore.contains(plugin.getMessage("item-lore-lapis"))) {
-            materials.add(Material.LAPIS_ORE);
-        }
-        if (hookLore.contains(plugin.getMessage("item-lore-diamond"))) {
-            materials.add(Material.DIAMOND_ORE);
-        }
-        if (hookLore.contains(plugin.getMessage("item-lore-emerald"))) {
-            materials.add(Material.EMERALD_ORE);
-        }
-        if (hookLore.contains(plugin.getMessage("item-lore-quartz"))) {
-            materials.add(Material.NETHER_QUARTZ_ORE);
-        }
-        plugin.materialOres.put(evt.getPlayer().getUniqueId().toString(), materials);
-        plugin.radius.put(evt.getPlayer().getUniqueId().toString(), plugin.getConfig().getInt("radius"));
-        plugin.chunk.put(evt.getPlayer().getUniqueId().toString(), evt.getPlayer().getLocation().getChunk());
+        int radius = plugin.getConfig().getInt("radius");
+        Chunk chunk = player.getLocation().getChunk();
+        int time = plugin.getConfig().getInt("cooldown");
 
-
+        PlayerData playerData = new PlayerData(materials, radius, chunk, time);
+        plugin.getPlayerData().put(player, playerData);
 
         if (evt.getPlayer().isSneaking()) {
-            plugin.sneaking.add(evt.getPlayer().getUniqueId().toString());
-            evt.getPlayer().sendMessage(plugin.getMessage("prefix") + plugin.getMessage("enable"));
+            evt.getPlayer().sendMessage(plugin.getMessage("enable"));
+            playerData.setCooldown(-1);
         } else {
-            plugin.cooldown.put(evt.getPlayer().getUniqueId().toString(), plugin.getConfig().getInt("cooldown"));
-            disappear(evt.getPlayer());
-            evt.getPlayer().sendMessage(plugin.getMessage("prefix") + plugin.getMessage("enable-cooldown").replace("%time%", plugin.cooldown.get(evt.getPlayer().getUniqueId().toString()).toString()));
+            evt.getPlayer().sendMessage(plugin.getMessage("enable-cooldown").replace("%time%", Integer.toString(playerData.getCooldown())));
         }
 
+        disappear(evt.getPlayer());
+        updateChunks(evt.getPlayer(), true);
     }
 
     @EventHandler
     public void onMove(PlayerMoveEvent evt) {
-        if (!plugin.cooldown.containsKey(evt.getPlayer().getUniqueId().toString()) && !plugin.sneaking.contains(evt.getPlayer().getUniqueId().toString())) {
+        updateChunks(evt.getPlayer(), false);
+    }
+
+    public void updateChunks(Player player, boolean firstUpdate) {
+        if (!plugin.getPlayerData().containsKey(player)) {
             return;
         }
 
-        if (plugin.chunk.get(evt.getPlayer().getUniqueId().toString()).equals(evt.getPlayer().getLocation().getChunk())) {
+        PlayerData playerData = plugin.getPlayerData().get(player);
+
+        if (playerData.getChunk().equals(player.getLocation().getChunk()) && !firstUpdate) {
             return;
         }
 
-        plugin.chunk.replace(evt.getPlayer().getUniqueId().toString(), evt.getPlayer().getLocation().getChunk());
+        playerData.setChunk(player.getLocation().getChunk());
 
-        int raduis = (16 * plugin.radius.get(evt.getPlayer().getUniqueId().toString()));
-        Block middle = evt.getPlayer().getLocation().getBlock();
-        List<Block> nearbyBlocks = new ArrayList<>();
-        for (int x = raduis; x >= -raduis; x--) {
-            for (int y = raduis; y >= -raduis; y--) {
-                for (int z = raduis; z >= -raduis; z--) {
-                    if (plugin.materialOres.get(evt.getPlayer().getUniqueId().toString()).contains(middle.getRelative(x, y, z).getType())) {
-                        nearbyBlocks.add(middle.getRelative(x, y, z));
-                        if (!plugin.blocks.containsValue(middle.getRelative(x, y, z))) {
-                            Location loc = middle.getRelative(x, y, z).getLocation();
-                            Shulker shulker = (Shulker) evt.getPlayer().getWorld().spawnEntity(loc, EntityType.SHULKER);
-                            shulker.setAI(false);
-                            shulker.setInvulnerable(true);
-                            shulker.setGlowing(true);
-                            PotionEffect invisibility = new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 255, false, false);
-                            shulker.addPotionEffect(invisibility);
-                            plugin.shulkers.put(shulker, evt.getPlayer().getUniqueId().toString());
-                            plugin.blocks.put(shulker, evt.getPlayer().getWorld().getBlockAt(loc));
-
-                            for (Player p : Bukkit.getOnlinePlayers()) {
-                                if (!p.equals(evt.getPlayer())) {
-                                    plugin.entityHider.toggleEntity(p, shulker);
-                                }
-                            }
+        List<Material> materials = new ArrayList<>();
+        for (Block block : playerData.getBlocksToFind()) {
+            materials.add(block.getMaterial());
+        }
 
 
-                            if (middle.getRelative(x, y, z).getType().equals(Material.COAL_ORE)) {
-                                plugin.coalOre.addEntry(shulker.getUniqueId().toString());
-                            } else if (middle.getRelative(x, y, z).getType().equals(Material.IRON_ORE)) {
-                                plugin.ironOre.addEntry(shulker.getUniqueId().toString());
-                            } else if (middle.getRelative(x, y, z).getType().equals(Material.GOLD_ORE)) {
-                                plugin.goldOre.addEntry(shulker.getUniqueId().toString());
-                            } else if (middle.getRelative(x, y, z).getType().equals(Material.REDSTONE_ORE)) {
-                                plugin.redstoneOre.addEntry(shulker.getUniqueId().toString());
-                            } else if (middle.getRelative(x, y, z).getType().equals(Material.LAPIS_ORE)) {
-                                plugin.lapisOre.addEntry(shulker.getUniqueId().toString());
-                            } else if (middle.getRelative(x, y, z).getType().equals(Material.DIAMOND_ORE)) {
-                                plugin.diamondOre.addEntry(shulker.getUniqueId().toString());
-                            } else if (middle.getRelative(x, y, z).getType().equals(Material.EMERALD_ORE)) {
-                                plugin.emeraldOre.addEntry(shulker.getUniqueId().toString());
-                            } else if (middle.getRelative(x, y, z).getType().equals(Material.NETHER_QUARTZ_ORE)) {
-                                plugin.quartzOre.addEntry(shulker.getUniqueId().toString());
-                            }
+        List<org.bukkit.block.Block> nearbyBlocks = new ArrayList<>();
 
+        Collection<Chunk> chunks = getChunksAroundPlayer(player);
+
+
+        for (Chunk chunk : chunks) {
+            final int minX = chunk.getX() << 4;
+            final int minZ = chunk.getZ() << 4;
+            final int maxX = minX | 15;
+            final int maxY = chunk.getWorld().getMaxHeight();
+            final int maxZ = minZ | 15;
+
+            for (int x = minX; x <= maxX; ++x) {
+                for (int y = 0; y <= maxY; ++y) {
+                    loop:
+                    for (int z = minZ; z <= maxZ; ++z) {
+                        org.bukkit.block.Block block = chunk.getWorld().getBlockAt(x, y, z);
+
+                        if (!materials.contains(block.getType())) {
+                            continue;
                         }
+
+                        nearbyBlocks.add(block);
+                        for (Shulker shulker : new ArrayList<>(playerData.getMarkedBlocks())) {
+                            if (shulker.getLocation().getBlock().equals(block)) {
+                                continue loop;
+                            }
+                        }
+
+                        Location loc = block.getLocation();
+
+
+                        Shulker shulker = (Shulker) player.getWorld().spawnEntity(loc, EntityType.SHULKER);
+                        shulker.setAI(false);
+                        shulker.setInvulnerable(true);
+                        shulker.setGlowing(true);
+                        PotionEffect invisibility = new PotionEffect(PotionEffectType.INVISIBILITY, Integer.MAX_VALUE, 255, false, false);
+                        shulker.addPotionEffect(invisibility);
+
+                        playerData.getMarkedBlocks().add(shulker);
+
+
+                        for (Player p : Bukkit.getOnlinePlayers()) {
+                            if (!p.equals(player)) {
+                                plugin.entityHider.hideEntity(p, shulker);
+                            }
+                        }
+
+                        plugin.getBlockByMaterial(block.getType()).getTeam().addEntry(shulker.getUniqueId().toString());
                     }
                 }
             }
         }
-        List<Shulker> toRemove = new ArrayList<>();
-        for (Shulker shulker : plugin.blocks.keySet()) {
-            if (!nearbyBlocks.contains(plugin.blocks.get(shulker))) {
-                World world = evt.getPlayer().getWorld();
 
-                if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.COAL_ORE)) {
-                    plugin.diamondOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.IRON_ORE)) {
-                    plugin.ironOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.GOLD_ORE)) {
-                    plugin.goldOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.REDSTONE_ORE)) {
-                    plugin.redstoneOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.LAPIS_ORE)) {
-                    plugin.lapisOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.DIAMOND_ORE)) {
-                    plugin.diamondOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.EMERALD_ORE)) {
-                    plugin.emeraldOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.NETHER_QUARTZ_ORE)) {
-                    plugin.quartzOre.removeEntry(shulker.getUniqueId().toString());
-                }
-                plugin.shulkers.remove(shulker);
-                toRemove.add(shulker);
+
+        for (Shulker shulker : new ArrayList<>(playerData.getMarkedBlocks())) {
+            org.bukkit.block.Block block = shulker.getWorld().getBlockAt(shulker.getLocation());
+            if (!nearbyBlocks.contains(block)) {
                 shulker.remove();
+                plugin.getBlockByMaterial(block.getType()).getTeam().removeEntry(shulker.getUniqueId().toString());
+                playerData.getMarkedBlocks().remove(shulker);
             }
         }
-        for (Shulker shulker : toRemove) {
-            plugin.blocks.remove(shulker);
-        }
+
+
     }
 
+    public Collection<Chunk> getChunksAroundPlayer(Player player) {
+        int radius = plugin.getPlayerData().get(player).getRadius();
+        Collection<Integer> offset = new HashSet<>();
+        for (int i = -radius; i <= radius; i++) {
+            offset.add(i);
+        }
 
-    public void disappear(Player player) {
+        World world = player.getWorld();
+        int baseX = player.getLocation().getChunk().getX();
+        int baseZ = player.getLocation().getChunk().getZ();
+
+        Collection<Chunk> chunksAroundPlayer = new HashSet<>();
+        for (int x : offset) {
+            for (int z : offset) {
+                Chunk chunk = world.getChunkAt(baseX + x, baseZ + z);
+                chunksAroundPlayer.add(chunk);
+            }
+        }
+        return chunksAroundPlayer;
+    }
+
+    void disappear(Player player) {
         new BukkitRunnable() {
             @Override
             public void run() {
-                if (!plugin.cooldown.containsKey(player.getUniqueId().toString())) {
-                    removeShulker(player.getUniqueId().toString());
-                    plugin.materialOres.remove(player.getUniqueId().toString());
-                    plugin.radius.remove(player.getUniqueId().toString());
-                    plugin.chunk.remove(player.getUniqueId().toString());
+                if (!plugin.getPlayerData().containsKey(player)) {
                     this.cancel();
                 } else {
-                    if (plugin.cooldown.get(player.getUniqueId().toString()) != 0) {
-                        int time = plugin.cooldown.replace(player.getUniqueId().toString(), plugin.cooldown.get(player.getUniqueId().toString()) - 1);
+                    PlayerData playerData = plugin.getPlayerData().get(player);
+                    int time = playerData.getCooldown();
+                    if (time > 0) {
+                        playerData.setCooldown(time - 1);
                         player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(plugin.getMessage("cooldown-format").replace("%time%", Integer.toString(time))));
+                    } else if (time == -1) {
+                        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(plugin.getMessage("enabled-format")));
                     } else {
-                        removeShulker(player.getUniqueId().toString());
-                        plugin.cooldown.remove(player.getUniqueId().toString());
-                        plugin.materialOres.remove(player.getUniqueId().toString());
-                        plugin.radius.remove(player.getUniqueId().toString());
-                        plugin.chunk.remove(player.getUniqueId().toString());
-                        player.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("disable"));
-                        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(""));
+                        removeShulker(player);
+                        plugin.getPlayerData().remove(player);
+                        player.sendMessage(plugin.getMessage("disable"));
                         this.cancel();
                     }
                 }
@@ -242,120 +231,55 @@ class Finding implements Listener {
 
     @EventHandler
     public void oreBreak(BlockBreakEvent evt) {
-        if (!plugin.cooldown.containsKey(evt.getPlayer().getUniqueId().toString()) && !plugin.sneaking.contains(evt.getPlayer().getUniqueId().toString())) {
-            return;
-        }
+        for (PlayerData playerData : plugin.getPlayerData().values()) {
+            for (Shulker shulker : playerData.getMarkedBlocks()) {
+                if (evt.getBlock().equals(shulker.getLocation().getBlock())) {
 
-        HashMap<Shulker, Block> oresToRemove = new HashMap<>();
-        for (Shulker shulker : plugin.blocks.keySet()) {
+                    playerData.getMarkedBlocks().remove(shulker);
+                    plugin.getBlockByMaterial(evt.getBlock().getType()).getTeam().removeEntry(shulker.getUniqueId().toString());
+                    shulker.remove();
 
-            if (evt.getBlock().getLocation().equals(plugin.blocks.get(shulker).getLocation())) {
-
-                plugin.shulkers.remove(shulker);
-                oresToRemove.put(shulker, plugin.blocks.get(shulker));
-
-                if (evt.getBlock().getType().equals(Material.COAL_ORE)) {
-                    plugin.coalOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (evt.getBlock().getType().equals(Material.IRON_ORE)) {
-                    plugin.ironOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (evt.getBlock().getType().equals(Material.GOLD_ORE)) {
-                    plugin.goldOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (evt.getBlock().getType().equals(Material.REDSTONE_ORE)) {
-                    plugin.redstoneOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (evt.getBlock().getType().equals(Material.LAPIS_ORE)) {
-                    plugin.lapisOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (evt.getBlock().getType().equals(Material.DIAMOND_ORE)) {
-                    plugin.diamondOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (evt.getBlock().getType().equals(Material.EMERALD_ORE)) {
-                    plugin.emeraldOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (evt.getBlock().getType().equals(Material.NETHER_QUARTZ_ORE)) {
-                    plugin.quartzOre.removeEntry(shulker.getUniqueId().toString());
+                    return;
                 }
-
-                shulker.remove();
-
-                boolean otherOres = false;
-                for (Shulker s : plugin.shulkers.keySet()) {
-                    if (plugin.shulkers.get(s).equals(evt.getPlayer().getUniqueId().toString())) {
-                        otherOres = true;
-                        break;
-                    }
-                }
-                if (!otherOres) {
-                    plugin.cooldown.remove(evt.getPlayer().getUniqueId().toString());
-                }
-                break;
             }
-        }
-        for (Shulker shulker : oresToRemove.keySet()) {
-            plugin.blocks.remove(shulker);
         }
     }
 
     @EventHandler
     public void onLeave(PlayerQuitEvent evt) {
-        if (!plugin.cooldown.containsKey(evt.getPlayer().getUniqueId().toString()) && !plugin.sneaking.contains(evt.getPlayer().getUniqueId().toString())) {
+        if (!plugin.getPlayerData().containsKey(evt.getPlayer())) {
             return;
         }
-        plugin.cooldown.remove(evt.getPlayer().getUniqueId().toString());
-        if (plugin.sneaking.contains(evt.getPlayer().getUniqueId().toString())) {
-            plugin.sneaking.remove(evt.getPlayer().getUniqueId().toString());
-            (new Finding(plugin)).removeShulker(evt.getPlayer().getUniqueId().toString());
-        }
-        plugin.materialOres.remove(evt.getPlayer().getUniqueId().toString());
-        plugin.radius.remove(evt.getPlayer().getUniqueId().toString());
-        plugin.chunk.remove(evt.getPlayer().getUniqueId().toString());
+
+        removeShulker(evt.getPlayer());
+        plugin.getPlayerData().remove(evt.getPlayer());
     }
 
     @EventHandler
     public void onJoin(PlayerJoinEvent evt) {
-        for (Shulker s : plugin.shulkers.keySet()) {
-            plugin.entityHider.toggleEntity(evt.getPlayer(), s);
+        for (PlayerData playerData : plugin.getPlayerData().values()) {
+            for (Shulker shulker : playerData.getMarkedBlocks()) {
+                plugin.entityHider.hideEntity(evt.getPlayer(), shulker);
+            }
         }
     }
 
     @EventHandler
     public void onPlace(BlockPlaceEvent evt) {
-        if (evt.getItemInHand().getItemMeta().getDisplayName().equals(plugin.getMessage("item-name"))) {
+        if (plugin.hasFindingItem(evt.getPlayer(), true) != null) {
             evt.setCancelled(true);
         }
     }
 
-    public void removeShulker(String player) {
-        World world = null;
-        for (Shulker shulker : plugin.shulkers.keySet()) {
-            if (plugin.shulkers.get(shulker).equals(player)) {
-                world = shulker.getWorld();
-            }
-        }
 
-        List<Shulker> toRemove = new ArrayList<>();
-        for (Shulker shulker : plugin.shulkers.keySet()) {
-            if (plugin.shulkers.get(shulker).equals(player)) {
-                if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.COAL_ORE)) {
-                    plugin.diamondOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.IRON_ORE)) {
-                    plugin.ironOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.GOLD_ORE)) {
-                    plugin.goldOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.REDSTONE_ORE)) {
-                    plugin.redstoneOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.LAPIS_ORE)) {
-                    plugin.lapisOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.DIAMOND_ORE)) {
-                    plugin.diamondOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.EMERALD_ORE)) {
-                    plugin.emeraldOre.removeEntry(shulker.getUniqueId().toString());
-                } else if (world.getBlockAt(shulker.getLocation()).getType().equals(Material.NETHER_QUARTZ_ORE)) {
-                    plugin.quartzOre.removeEntry(shulker.getUniqueId().toString());
-                }
-                toRemove.add(shulker);
-                plugin.blocks.remove(shulker);
-                shulker.remove();
-            }
+    void removeShulker(Player player) {
+        PlayerData playerData = plugin.getPlayerData().get(player);
+        for (Shulker shulker : new ArrayList<>(playerData.getMarkedBlocks())) {
+            Block block = plugin.getBlockByMaterial(player.getWorld().getBlockAt(shulker.getLocation()).getType());
+            shulker.remove();
+            block.getTeam().removeEntry(shulker.getUniqueId().toString());
+            playerData.getMarkedBlocks().remove(shulker);
         }
-        for (Shulker shulker : toRemove) {
-            plugin.shulkers.remove(shulker);
-        }
+        player.spigot().sendMessage(ChatMessageType.ACTION_BAR, TextComponent.fromLegacyText(""));
     }
 }

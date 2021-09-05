@@ -1,7 +1,41 @@
 # Ore Finder plugin configuration file - config.yml
 
-# The number of blocks in each direction that the Ore-Finder will operate on (number)
-radius: 16
+# The number of CHUNKS (each chunk is 16x16 blocks) in each direction that the Ore-Finder will operate on (number)
+# WARNING! Do not set large values here! It may cause big lags on your server!
+radius: 1
 
 # Amount of time for which ores will be visible after using Ore-Finder (seconds)
 cooldown: 10
+
+# Ore-finder item material. Available materials: https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/Material.html
+item-material: TRIPWIRE_HOOK
+
+# Blocks that you can add to your ore finder item.
+#
+# Example:
+#
+#  COAL_ORE: - material name (list of materials: https://hub.spigotmc.org/javadocs/bukkit/org/bukkit/Material.html)
+#    name: "&0&lCoal" - display name that will show for example in ore finder item lore
+#    chat-color: '0' - color of highlighted ores (list of colors: https://minecraft.fandom.com/wiki/Formatting_codes#Usage)
+blocks:
+  COAL_ORE:
+    name: "&0&lCoal"
+    chat-color: '0'
+  IRON_ORE:
+    name: "&7&lIron"
+    chat-color: '7'
+  GOLD_ORE:
+    name: "&6&lGold"
+    chat-color: '6'
+  REDSTONE_ORE:
+    name: "&c&lRedstone"
+    chat-color: 'c'
+  LAPIS_ORE:
+    name: "&1&lLapis lazuli"
+    chat-color: '1'
+  DIAMOND_ORE:
+    name: "&9&lDiamond"
+    chat-color: '9'
+  EMERALD_ORE:
+    name: "&a&lEmerald"
+    chat-color: 'a'

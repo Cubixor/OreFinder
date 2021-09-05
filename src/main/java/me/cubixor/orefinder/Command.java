@@ -7,6 +7,7 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.enchantments.Enchantment;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemFlag;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
@@ -16,159 +17,208 @@ import java.util.List;
 
 public class Command implements CommandExecutor {
 
-    private Orefinder plugin;
+    private final OreFinder plugin;
 
-    Command(Orefinder of) {
-        plugin = of;
+    public Command() {
+        this.plugin = OreFinder.getInstance();
     }
 
 
     @Override
     public boolean onCommand(CommandSender sender, org.bukkit.command.Command command, String label, String[] args) {
-        if (!command.getName().equalsIgnoreCase("orefinder")) {
-            return true;
-        }
-
         if (!(sender instanceof Player)) {
-            sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("must-be-player"));
+            sender.sendMessage(plugin.getMessage("must-be-player"));
             return true;
         }
 
-        if (!sender.hasPermission("orefinder.command")) {
-            sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("no-permission"));
-            return true;
-        }
 
-        if (args.length == 0 || (args[0] != null && args[0].equalsIgnoreCase("help"))) {
-            for (String message : plugin.messagesConfig.getStringList("help")) {
-                String coloredMessage = ChatColor.translateAlternateColorCodes('&', message);
-                sender.sendMessage(coloredMessage);
-            }
-        } else if (args[0].equalsIgnoreCase("give")) {
-            if (args.length != 2) {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-give-usage"));
+        Player player = (Player) sender;
+
+        if (args.length == 0 || args[0].equalsIgnoreCase("help")) {
+            if (!sender.hasPermission("orefinder.command.help")) {
+                sender.sendMessage(plugin.getMessage("no-permission"));
                 return true;
             }
 
-            ItemStack hook = new ItemStack(Material.TRIPWIRE_HOOK);
-            ItemMeta hookMeta = hook.getItemMeta();
-            hookMeta.setDisplayName(plugin.getMessage("item-name"));
-            hookMeta.addEnchant(Enchantment.PIERCING, 1, true);
-            hook.setItemMeta(hookMeta);
-
-            try {
-                Bukkit.getPlayer(args[1]).getInventory().addItem(hook);
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-give-success"));
-            } catch (Exception ex) {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-give-invalid-player"));
+            player.sendMessage(plugin.getMessageList("help").toArray(new String[0]));
+        } else if (args[0].equalsIgnoreCase("reload")) {
+            if (!sender.hasPermission("orefinder.command.reload")) {
+                sender.sendMessage(plugin.getMessage("no-permission"));
+                return true;
             }
+
+            for (Player target : plugin.getPlayerData().keySet()) {
+                new Finding().removeShulker(target);
+                target.sendMessage(plugin.getMessage("disable"));
+            }
+
+            plugin.getPlayerData().clear();
+            plugin.getBlocksToFind().clear();
+            plugin.loadConfigs();
+
+            player.sendMessage(plugin.getMessage("command-reload"));
+        } else if (args[0].equalsIgnoreCase("give")) {
+            if (!sender.hasPermission("orefinder.command.give")) {
+                sender.sendMessage(plugin.getMessage("no-permission"));
+                return true;
+            }
+
+            if (args.length != 2) {
+                player.sendMessage(plugin.getMessage("command-give-usage"));
+                return true;
+            }
+
+            Player target = Bukkit.getPlayerExact(args[1]);
+
+            if (target == null) {
+                player.sendMessage(plugin.getMessage("command-invalid-player"));
+                return true;
+            }
+
+            ItemStack itemStack = new ItemStack(Material.getMaterial(plugin.getConfig().getString("item-material")));
+            ItemMeta itemMeta = itemStack.getItemMeta();
+            itemMeta.setDisplayName(plugin.getMessage("item-name"));
+            itemMeta.addEnchant(Enchantment.DURABILITY, 1, true);
+            itemMeta.addItemFlags(ItemFlag.HIDE_ENCHANTS);
+            itemStack.setItemMeta(itemMeta);
+
+
+            target.getInventory().addItem(itemStack);
+            player.sendMessage(plugin.getMessage("command-give-success"));
 
         } else if (args[0].equalsIgnoreCase("addore")) {
+            if (!sender.hasPermission("orefinder.command.addore")) {
+                sender.sendMessage(plugin.getMessage("no-permission"));
+                return true;
+            }
+
             if (args.length != 3) {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-addore-usage"));
+                player.sendMessage(plugin.getMessage("command-addore-usage"));
                 return true;
             }
 
-            Player target = Bukkit.getPlayer(args[2]);
-            if (!Bukkit.getOnlinePlayers().contains(target)) {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-invalid-player"));
+            Player target = Bukkit.getPlayerExact(args[1]);
+
+            if (target == null) {
+                player.sendMessage(plugin.getMessage("command-invalid-player"));
                 return true;
             }
 
-            try {
-                target.getInventory().getItemInMainHand().getItemMeta().getDisplayName().equals(plugin.getMessage("item-name"));
-            } catch (Exception ex) {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-addore-item-in-hand"));
+            ItemStack itemStack = plugin.hasFindingItem(target, false);
+
+            if (itemStack == null) {
+                player.sendMessage(plugin.getMessage("command-item-in-hand"));
+                return true;
+            }
+
+            ItemMeta hookMeta = itemStack.getItemMeta();
+            List<String> hookLore = hookMeta.getLore() != null ? new ArrayList<>(hookMeta.getLore()) : new ArrayList<>();
+
+            List<Block> materials = oresList(args[2], player);
+            if (materials == null) {
                 return true;
             }
 
 
-            ItemStack hook = target.getInventory().getItemInMainHand();
-            ItemMeta hookMeta = hook.getItemMeta();
-            List<String> hookLore;
-            if (hookMeta.getLore() != null) {
-                hookLore = new ArrayList<>(hookMeta.getLore());
-            } else {
-                hookLore = new ArrayList<>();
-            }
-
-            if (args[1].equalsIgnoreCase("coal")) {
-                if (hookLore.contains(plugin.getMessage("item-lore-coal"))) {
-                    sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-addore-has-ore"));
+            for (Block block : materials) {
+                if (hookLore.contains(block.getName())) {
+                    sender.sendMessage(plugin.getMessage("command-addore-has-ore"));
                     return true;
                 }
-                hookLore.add(plugin.getMessage("item-lore-coal"));
-            } else if (args[1].equalsIgnoreCase("iron")) {
-                if (hookLore.contains(plugin.getMessage("item-lore-iron"))) {
-                    sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-addore-has-ore"));
-                    return true;
-                }
-                hookLore.add(plugin.getMessage("item-lore-iron"));
-            } else if (args[1].equalsIgnoreCase("gold")) {
-                if (hookLore.contains(plugin.getMessage("item-lore-gold"))) {
-                    sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-addore-has-ore"));
-                    return true;
-                }
-                hookLore.add(plugin.getMessage("item-lore-gold"));
-            } else if (args[1].equalsIgnoreCase("redstone")) {
-                if (hookLore.contains(plugin.getMessage("item-lore-redstone"))) {
-                    sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-addore-has-ore"));
-                    return true;
-                }
-                hookLore.add(plugin.getMessage("item-lore-redstone"));
-            } else if (args[1].equalsIgnoreCase("lapis")) {
-                if (hookLore.contains(plugin.getMessage("item-lore-lapis"))) {
-                    sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-addore-has-ore"));
-                    return true;
-                }
-                hookLore.add(plugin.getMessage("item-lore-lapis"));
-            } else if (args[1].equalsIgnoreCase("diamond")) {
-                if (hookLore.contains(plugin.getMessage("item-lore-diamond"))) {
-                    sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-addore-has-ore"));
-                    return true;
-                }
-                hookLore.add(plugin.getMessage("item-lore-diamond"));
-            } else if (args[1].equalsIgnoreCase("emerald")) {
-                if (hookLore.contains(plugin.getMessage("item-lore-emerald"))) {
-                    sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-addore-has-ore"));
-                    return true;
-                }
-                hookLore.add(plugin.getMessage("item-lore-emerald"));
-            } else if (args[1].equalsIgnoreCase("quartz")) {
-                if (hookLore.contains(plugin.getMessage("item-lore-quartz"))) {
-                    sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-addore-has-ore"));
-                    return true;
-                }
-                hookLore.add(plugin.getMessage("item-lore-quartz"));
-            } else {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-addore-invalid-ore"));
-                return true;
+                hookLore.add(block.getName());
             }
 
             hookMeta.setLore(hookLore);
-            hook.setItemMeta(hookMeta);
-            target.getInventory().setItemInMainHand(hook);
+            target.getInventory().remove(itemStack);
+            itemStack.setItemMeta(hookMeta);
+            target.getInventory().addItem(itemStack);
 
-            sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-addore-success"));
+            player.sendMessage(plugin.getMessage("command-addore-success"));
 
+        } else if (args[0].equalsIgnoreCase("removeore")) {
+            if (args.length != 3) {
+                player.sendMessage(plugin.getMessage("command-removeore-usage"));
+                return true;
+            }
+
+            Player target = Bukkit.getPlayerExact(args[1]);
+
+            if (target == null) {
+                player.sendMessage(plugin.getMessage("command-invalid-player"));
+                return true;
+            }
+
+            ItemStack itemStack = plugin.hasFindingItem(target, false);
+
+            if (itemStack == null) {
+                player.sendMessage(plugin.getMessage("command-item-in-hand"));
+                return true;
+            }
+
+            ItemMeta itemMeta = itemStack.getItemMeta();
+            List<String> lore = itemMeta.getLore() != null ? new ArrayList<>(itemMeta.getLore()) : new ArrayList<>();
+
+            List<String> toRemoveArgs = new ArrayList<>(Arrays.asList(args[2].split(",")));
+            List<String> toRemoveUpper = new ArrayList<>();
+            for (String block : toRemoveArgs) {
+                toRemoveUpper.add(block.toUpperCase());
+            }
+
+            List<String> materials = new ArrayList<>();
+            for (Block block : plugin.getBlocksToFind().values()) {
+                if (lore.contains(block.getName())) {
+                    materials.add(block.getMaterial().name());
+                }
+            }
+            List<Block> toRemove = new ArrayList<>();
+            for (String materialToRemove : toRemoveUpper) {
+                if (!materials.contains(materialToRemove)) {
+                    player.sendMessage(plugin.getMessage("command-removeore-not-added"));
+                    return true;
+                }
+                Block block = plugin.getBlocksToFind().get(materialToRemove);
+
+                if (toRemove.contains(block)) {
+                    player.sendMessage(plugin.getMessage("command-duplicate"));
+                    return true;
+                }
+                toRemove.add(block);
+            }
+
+            for (Block block : toRemove) {
+                lore.remove(block.getName());
+            }
+
+            itemMeta.setLore(lore);
+            target.getInventory().remove(itemStack);
+            itemStack.setItemMeta(itemMeta);
+            target.getInventory().addItem(itemStack);
+
+            player.sendMessage(plugin.getMessage("command-removeore-success"));
 
         } else if (args[0].equalsIgnoreCase("findores")) {
+            if (!sender.hasPermission("orefinder.command.findores")) {
+                sender.sendMessage(plugin.getMessage("no-permission"));
+                return true;
+            }
+
             if (args.length != 5) {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-findores-usage"));
+                player.sendMessage(plugin.getMessage("command-findores-usage"));
                 return true;
             }
 
-            Player target = Bukkit.getPlayer(args[1]);
-            if (!Bukkit.getOnlinePlayers().contains(target)) {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-invalid-player"));
+            Player target = Bukkit.getPlayerExact(args[1]);
+
+            if (target == null) {
+                player.sendMessage(plugin.getMessage("command-invalid-player"));
                 return true;
             }
 
-            int radius = 0;
+            int radius;
             try {
                 radius = Integer.parseInt(args[2]);
-            } catch (Exception ex) {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-findores-radius"));
+            } catch (NumberFormatException e) {
+                player.sendMessage(plugin.getMessage("command-findores-radius"));
                 return true;
             }
 
@@ -176,127 +226,108 @@ public class Command implements CommandExecutor {
             if (!args[3].equalsIgnoreCase("none")) {
                 try {
                     time = Integer.parseInt(args[3]);
-                } catch (Exception ex) {
-                    sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-findores-time"));
+                } catch (NumberFormatException e) {
+                    player.sendMessage(plugin.getMessage("command-findores-time"));
                     return true;
                 }
             }
 
-            List<String> enabledOres = new ArrayList<>(Arrays.asList(args[4].split(",")));
-            List<Material> materials = new ArrayList<>();
-            boolean duplicated = false;
-            for (String ore : enabledOres) {
-                if (ore.equalsIgnoreCase("coal")) {
-                    if (materials.contains(Material.COAL_ORE)) {
-                        duplicated = true;
-                        break;
-                    }
-                    materials.add(Material.COAL_ORE);
-                } else if (ore.equalsIgnoreCase("iron")) {
-                    if (materials.contains(Material.IRON_ORE)) {
-                        duplicated = true;
-                        break;
-                    }
-                    materials.add(Material.IRON_ORE);
-                } else if (ore.equalsIgnoreCase("gold")) {
-                    if (materials.contains(Material.GOLD_ORE)) {
-                        duplicated = true;
-                        break;
-                    }
-                    materials.add(Material.GOLD_ORE);
-                } else if (ore.equalsIgnoreCase("redstone")) {
-                    if (materials.contains(Material.REDSTONE_ORE)) {
-                        duplicated = true;
-                        break;
-                    }
-                    materials.add(Material.REDSTONE_ORE);
-                } else if (ore.equalsIgnoreCase("lapis")) {
-                    if (materials.contains(Material.LAPIS_ORE)) {
-                        duplicated = true;
-                        break;
-                    }
-                    materials.add(Material.LAPIS_ORE);
-                } else if (ore.equalsIgnoreCase("diamond")) {
-                    if (materials.contains(Material.DIAMOND_ORE)) {
-                        duplicated = true;
-                        break;
-                    }
-                    materials.add(Material.DIAMOND_ORE);
-                } else if (ore.equalsIgnoreCase("emerald")) {
-                    if (materials.contains(Material.EMERALD_ORE)) {
-                        duplicated = true;
-                        break;
-                    }
-                    materials.add(Material.EMERALD_ORE);
-                } else if (ore.equalsIgnoreCase("quartz")) {
-                    if (materials.contains(Material.NETHER_QUARTZ_ORE)) {
-                        duplicated = true;
-                        break;
-                    }
-                    materials.add(Material.NETHER_QUARTZ_ORE);
-                } else {
-                    sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-findores-invalid-ore"));
-                    return true;
-                }
-            }
-            if (duplicated) {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-findores-duplicate"));
+            if (plugin.getPlayerData().containsKey(player)) {
+                player.sendMessage(plugin.getMessage("command-findores-already-enabled"));
                 return true;
             }
 
-            if (plugin.cooldown.containsKey(target.getUniqueId().toString()) || plugin.sneaking.contains(target.getUniqueId().toString())) {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-findores-already-enabled"));
+            List<Block> materials = oresList(args[4], player);
+            if (materials == null) {
                 return true;
             }
 
-            plugin.materialOres.put(target.getUniqueId().toString(), materials);
 
-            plugin.chunk.put(target.getUniqueId().toString(), target.getLocation().getChunk());
-            plugin.radius.put(target.getUniqueId().toString(), radius);
-
+            PlayerData playerData = new PlayerData(materials, radius, player.getLocation().getChunk(), time);
+            plugin.getPlayerData().put(player, playerData);
+            new Finding().updateChunks(player, true);
 
             if (args[3].equalsIgnoreCase("none")) {
-                plugin.sneaking.add(target.getUniqueId().toString());
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("enable"));
+                player.sendMessage(plugin.getMessage("enable"));
+                playerData.setCooldown(-1);
             } else {
-                plugin.cooldown.put(target.getUniqueId().toString(), time);
-                (new Finding(plugin)).disappear(target);
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("enable-cooldown").replace("%time%", plugin.cooldown.get(target.getUniqueId().toString()).toString()));
+                player.sendMessage(plugin.getMessage("enable-cooldown").replace("%time%", Integer.toString(time)));
             }
 
+            new Finding().disappear(target);
 
         } else if (args[0].equalsIgnoreCase("disable")) {
+            if (!sender.hasPermission("orefinder.command.disable")) {
+                sender.sendMessage(plugin.getMessage("no-permission"));
+                return true;
+            }
+
             if (args.length != 2) {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-disable-usage"));
+                player.sendMessage(plugin.getMessage("command-disable-usage"));
                 return true;
             }
 
             Player target = Bukkit.getPlayer(args[1]);
-            if (!Bukkit.getOnlinePlayers().contains(target)) {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-invalid-player"));
+            if (target == null) {
+                player.sendMessage(plugin.getMessage("command-invalid-player"));
                 return true;
             }
 
-            if (!plugin.cooldown.containsKey(target.getUniqueId().toString()) && !plugin.sneaking.contains(target.getUniqueId().toString())) {
-                sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("command-disable-not-enabled"));
+            if (!plugin.getPlayerData().containsKey(target)) {
+                player.sendMessage(plugin.getMessage("command-disable-not-enabled"));
                 return true;
             }
-            plugin.cooldown.remove(target.getUniqueId().toString());
 
-            if (plugin.sneaking.contains(target.getUniqueId().toString())) {
-                plugin.sneaking.remove(target.getUniqueId().toString());
-                plugin.radius.remove(target.getUniqueId().toString());
-                plugin.chunk.remove(target.getUniqueId().toString());
-                (new Finding(plugin)).removeShulker(target.getUniqueId().toString());
+            new Finding().removeShulker(target);
+            plugin.getPlayerData().remove(target);
 
+            player.sendMessage(plugin.getMessage("command-disable-success"));
+
+        } else if (args[0].equalsIgnoreCase("listores")) {
+            if (!sender.hasPermission("orefinder.command.listores")) {
+                sender.sendMessage(plugin.getMessage("no-permission"));
+                return true;
             }
-            plugin.materialOres.remove(target.getUniqueId().toString());
 
-            sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("disable"));
+            StringBuilder stringBuilder = new StringBuilder();
+            for (String block : plugin.getBlocksToFind().keySet()) {
+                stringBuilder.append(block + ChatColor.GRAY + ", ");
+            }
+            stringBuilder.setLength(stringBuilder.length() - 2);
+            player.sendMessage(plugin.getMessage("command-listores").replace("%blocks%", stringBuilder.toString()));
+
 
         } else {
-            sender.sendMessage(plugin.getMessage("prefix") + plugin.getMessage("unknown-command"));
+            player.sendMessage(plugin.getMessage("unknown-command"));
         }
         return true;
+    }
+
+    private List<Block> oresList(String blocksString, Player player) {
+        List<String> enabledBlocks = new ArrayList<>(Arrays.asList(blocksString.split(",")));
+        List<Block> blocks = new ArrayList<>();
+
+        List<String> enabledBlocksUpper = new ArrayList<>();
+        for (String block : enabledBlocks) {
+            enabledBlocksUpper.add(block.toUpperCase());
+        }
+
+        for (String block : enabledBlocksUpper) {
+            if (!plugin.getBlocksToFind().containsKey(block)) {
+                player.sendMessage(plugin.getMessage("command-invalid-ore"));
+                return null;
+            }
+
+            Block b = plugin.getBlocksToFind().get(block);
+
+            if (blocks.contains(b)) {
+                player.sendMessage(plugin.getMessage("command-duplicate"));
+                return null;
+            }
+
+            blocks.add(b);
+        }
+
+        return blocks;
     }
 }

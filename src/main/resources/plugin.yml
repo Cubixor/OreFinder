@@ -1,7 +1,7 @@
 name: OreFinder
 version: ${project.version}
 api-version: 1.13
-main: me.cubixor.orefinder.Orefinder
+main: me.cubixor.orefinder.OreFinder
 depend: [ProtocolLib]
 description: Find ores easier using new Ore-Finder item!
 author: Cubixor
@@ -11,16 +11,39 @@ commands:
     usage: /orefinder
     aliases: of
 permissions:
-  orefinder.command:
-    description: Allows using orefinder command
-    default: op
-  orefinder.use:
-    description: Allows using Ore-Finder
-    default: true
   orefinder.*:
-    description: Allows using all plugin features
     default: op
     children:
-      - orefinder.command
+      - orefinder.command.*
       - orefinder.use
+  orefinder.command.*:
+    default: op
+    children:
+      - orefinder.command.help
+      - orefinder.command.reload
+      - orefinder.command.give
+      - orefinder.command.addore
+      - orefinder.command.removeore
+      - orefinder.command.findores
+      - orefinder.command.disable
+      - orefinder.command.listores
+  orefinder.use:
+    default: true
+  orefinder.command.help:
+    default: op
+  orefinder.command.reload:
+    default: op
+  orefinder.command.give:
+    default: op
+  orefinder.command.addore:
+    default: op
+  orefinder.command.removeore:
+    default: op
+  orefinder.command.findores:
+    default: op
+  orefindeer.command.disable:
+    default: op
+  orefinder.command.listores:
+    default: op
+
 
