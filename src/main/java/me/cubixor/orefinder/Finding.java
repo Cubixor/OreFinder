@@ -160,7 +160,7 @@ public class Finding implements Listener {
 
                         for (Player p : Bukkit.getOnlinePlayers()) {
                             if (!p.equals(player)) {
-                                plugin.entityHider.hideEntity(p, shulker);
+                                VersionUtils.hideEntity(p, shulker);
                             }
                         }
 
@@ -259,7 +259,12 @@ public class Finding implements Listener {
     public void onJoin(PlayerJoinEvent evt) {
         for (PlayerData playerData : plugin.getPlayerData().values()) {
             for (Shulker shulker : playerData.getMarkedBlocks()) {
-                plugin.entityHider.hideEntity(evt.getPlayer(), shulker);
+                new BukkitRunnable() {
+                    @Override
+                    public void run() {
+                        VersionUtils.hideEntity(evt.getPlayer(), shulker);
+                    }
+                }.runTaskLater(plugin, 1);
             }
         }
     }

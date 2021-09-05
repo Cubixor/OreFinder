@@ -19,7 +19,6 @@ public final class OreFinder extends JavaPlugin {
     private static OreFinder instance;
     private final File messagesFile = new File(getDataFolder(), "messages.yml");
     private final HashMap<String, Block> blocksToFind = new HashMap<>();
-    EntityHider entityHider;
     private final HashMap<Player, PlayerData> playerData = new HashMap<>();
     private FileConfiguration messagesConfig;
 
@@ -31,7 +30,6 @@ public final class OreFinder extends JavaPlugin {
     public void onEnable() {
         instance = this;
         VersionUtils.initialize();
-        entityHider = new EntityHider(this, EntityHider.Policy.BLACKLIST);
 
         getCommand("orefinder").setExecutor(new Command());
         getCommand("orefinder").setTabCompleter(new TabCompleter());
