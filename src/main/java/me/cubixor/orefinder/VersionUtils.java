@@ -25,6 +25,8 @@ public class VersionUtils {
 
 
     public static void hideEntity(Player stacker, Entity entity) {
+        OreFinder.getInstance().entityHider.hideEntity(stacker, entity);
+
         try {
             Constructor<?> constructor;
             Class<?> packetClass;
